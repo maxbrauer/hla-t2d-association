@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLA-T2D Association — 3D Explorer</title>
+    <style>
+        :root {
+            --bg: #030712;
+            --bg2: #0f172a;
+            --bg3: #1e293b;
+            --border: #334155;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --dim: #64748b;
+            --risk: #ef4444;
+            --protect: #10b981;
+            --warn: #f59e0b;
+            --blue: #3b82f6;
+            --cyan: #06b6d4;
+            --purple: #8b5cf6;
+            --pink: #ec4899;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+        #canvas-container { position: fixed; top:0; left:0; width:100%; height:100%; }
+
+        .hud-top {
+            position: fixed; top:0; left:0; right:0;
+            padding: 1rem 1.5rem;
+            background: linear-gradient(180deg, rgba(3,7,18,0.92) 0%, transparent 100%);
+            z-index:10; display:flex; justify-content:space-between; align-items:flex-start;
+            pointer-events:none;
+        }
+        .hud-top > * { pointer-events:auto; }
+        .hud-title { font-size:1.3rem; font-weight:700; background: linear-gradient(135deg, #ef4444, #f59e0b, #06b6d4); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .hud-sub { font-size:0.75rem; color:var(--dim); margin-top:0.15rem; }
+        .controls { display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; }
+        .btn { padding:0.35rem 0.8rem; background:rgba(30,41,59,0.85); border:1px solid rgba(100,116,139,0.25); border-radius:7px; color:var(--muted); font-size:0.78rem; cursor:pointer; backdrop-filter:blur(8px); transition:all 0.2s; }
+        .btn:hover { border-color:var(--blue); color:var(--text); }
+        .btn.active { background:rgba(59,130,246,0.25); border-color:var(--blue); color:#fff; }
+        .sel { padding:0.35rem 0.6rem; background:rgba(30,41,59,0.85); border:1px solid rgba(100,116,139,0.25); border-radius:7px; color:var(--muted); font-size:0.78rem; cursor:pointer; backdrop-filter:blur(8px); }
+
+        /* Left Panel: MHC Region / Legend */
+        .left-panel {
+            position:fixed; left:1rem; top:50%; transform:translateY(-50%);
+            width:220px; background:rgba(15,23,42,0.88); border:1px solid rgba(100,116,139,0.2);
+            border-radius:12px; padding:1rem; backdrop-filter:blur(12px); z-index:10;
+            max-height:80vh; overflow-y:auto;
+        }
+        .panel-title { font-size:0.7rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.6rem; }
+        .gene-item { display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.4rem; border-radius:6px; font-size:0.8rem; cursor:pointer; transition:background 0.2s; margin-bottom:0.2rem; }
+        .gene-item:hover { background:rgba(59,130,246,0.1); }
+        .gene-item.active { background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.3); }
+        .gene-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+        .gene-class { font-size:0.65rem; color:var(--dim); margin-left:auto; }
+        .mhc-bar { width:100%; height:12px; background:var(--bg3); border-radius:6px; margin:0.5rem 0; position:relative; overflow:visible; }
+        .mhc-gene-mark { position:absolute; height:100%; border-radius:3px; cursor:pointer; transition:opacity 0.2s; min-width:3px; }
+        .mhc-gene-mark:hover { opacity:0.8; }
+        .mhc-labels { display:flex; justify-content:space-between; font-size:0.6rem; color:var(--dim); }
+
+        /* Right Panel: Detail */
+        .right-panel {
+            position:fixed; right:1rem; top:50%; transform:translateY(-50%);
+            width:320px; background:rgba(15,23,42,0.92); border:1px solid rgba(100,116,139,0.2);
+            border-radius:12px; padding:1.5rem; backdrop-filter:blur(16px); z-index:10;
+            display:none; max-height:85vh; overflow-y:auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .right-panel.active { display:block; }
+        .panel-close { position:absolute; top:0.5rem; right:0.75rem; background:none; border:none; color:var(--dim); font-size:1.3rem; cursor:pointer; }
+        .panel-close:hover { color:#fff; }
+        .detail-allele { font-size:1.4rem; font-weight:800; margin-bottom:0.2rem; }
+        .detail-gene { color:var(--dim); font-size:0.85rem; }
+        .detail-divider { height:1px; background:rgba(100,116,139,0.2); margin:0.75rem 0; }
+        .detail-row { display:flex; justify-content:space-between; padding:0.3rem 0; font-size:0.83rem; }
+        .detail-label { color:var(--dim); }
+        .detail-value { font-weight:600; }
+        .detail-section { font-size:0.68rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.08em; margin-top:0.8rem; margin-bottom:0.3rem; }
+        .detail-desc { font-size:0.83rem; color:var(--muted); line-height:1.5; }
+        .detail-mech { background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.2); border-radius:8px; padding:0.6rem; font-size:0.83rem; color:var(--cyan); margin-top:0.4rem; line-height:1.4; }
+        .or-badge { display:inline-block; padding:0.2rem 0.6rem; border-radius:12px; font-size:0.8rem; font-weight:700; }
+        .or-risk { background:rgba(239,68,68,0.15); color:var(--risk); }
+        .or-protect { background:rgba(16,185,129,0.15); color:var(--protect); }
+        .freq-bars { margin-top:0.4rem; }
+        .freq-row { display:flex; align-items:center; gap:0.4rem; font-size:0.75rem; margin-bottom:0.2rem; }
+        .freq-label { width:50px; color:var(--dim); text-align:right; }
+        .freq-bar-bg { flex:1; height:6px; background:var(--bg3); border-radius:3px; }
+        .freq-bar-fill { height:100%; border-radius:3px; transition:width 0.5s; }
+        .freq-val { width:35px; color:var(--muted); font-size:0.7rem; }
+
+        /* Bottom: Analysis Panel */
+        .bottom-panel {
+            position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+            width:calc(100% - 520px); max-width:900px;
+            background:rgba(15,23,42,0.9); border:1px solid rgba(100,116,139,0.2);
+            border-radius:12px 12px 0 0; backdrop-filter:blur(12px); z-index:10;
+            display:none; max-height:45vh; overflow-y:auto;
+        }
+        .bottom-panel.active { display:block; }
+        .bottom-header { display:flex; justify-content:space-between; align-items:center; padding:0.75rem 1.2rem; border-bottom:1px solid rgba(100,116,139,0.15); }
+        .bottom-body { padding:1rem 1.2rem; }
+        .risk-meter { display:flex; align-items:center; gap:1rem; margin:0.75rem 0; }
+        .risk-bar { flex:1; height:10px; background:linear-gradient(90deg, #10b981, #f59e0b, #ef4444); border-radius:5px; position:relative; }
+        .risk-marker { position:absolute; top:-4px; width:18px; height:18px; background:#fff; border-radius:50%; border:2px solid var(--bg); box-shadow:0 0 8px rgba(255,255,255,0.5); transition:left 0.5s; }
+        .risk-label { font-size:0.8rem; font-weight:700; min-width:90px; }
+        .hap-item { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; font-size:0.82rem; border-bottom:1px solid rgba(100,116,139,0.1); }
+        .hap-dot { width:8px; height:8px; border-radius:50%; }
+        .hap-detected { font-weight:700; }
+        .hap-not { opacity:0.35; }
+        .rec-item { padding:0.3rem 0; font-size:0.82rem; color:var(--muted); }
+        .rec-item::before { content:"→ "; color:var(--cyan); }
+
+        .tooltip { position:fixed; background:rgba(15,23,42,0.92); border:1px solid rgba(100,116,139,0.3); border-radius:8px; padding:0.4rem 0.7rem; font-size:0.78rem; pointer-events:none; z-index:20; display:none; backdrop-filter:blur(8px); white-space:nowrap; }
+        .tooltip.active { display:block; }
+
+        ::-webkit-scrollbar { width:4px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div class="hud-top">
+    <div>
+        <div class="hud-title">HLA ↔ Type 2 Diabetes — 3D Association Map</div>
+        <div class="hud-sub">Drag to rotate · Scroll to zoom · Click nodes for details</div>
+    </div>
+    <div class="controls">
+        <select class="sel" id="view-select">
+            <option value="network">Association Network</option>
+            <option value="chromosome">Chromosome 6 MHC</option>
+            <option value="molecule">MHC-II Molecule</option>
+            <option value="haplotypes">Haplotype Risk Map</option>
+        </select>
+        <button class="btn active" id="btn-rotate">Auto-Rotate</button>
+        <button class="btn" id="btn-labels">Labels</button>
+        <button class="btn" id="btn-links">Links</button>
+        <button class="btn active" id="btn-glow">Glow</button>
+        <button class="btn" id="btn-analyze" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#fca5a5;">Run Demo Analysis</button>
+    </div>
+</div>
+
+<div class="left-panel" id="left-panel">
+    <div class="panel-title">HLA Genes — Chr6p21.3</div>
+    <div id="gene-list"></div>
+    <div class="panel-title" style="margin-top:0.8rem;">MHC Region (4.97 Mb)</div>
+    <div class="mhc-bar" id="mhc-bar"></div>
+    <div class="mhc-labels"><span>28.5 Mb</span><span>33.5 Mb</span></div>
+    <div class="panel-title" style="margin-top:0.8rem;">Legend</div>
+    <div style="font-size:0.78rem;">
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--risk);"></span> Risk allele</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--protect);"></span> Protective allele</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--warn);"></span> T2D phenotype</div>
+        <div style="display:flex;align-items:center;gap:0.4rem;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--purple);"></span> SNP association</div>
+    </div>
+</div>
+
+<div class="right-panel" id="right-panel">
+    <button class="panel-close" id="panel-close">&times;</button>
+    <div id="detail-content"></div>
+</div>
+
+<div class="bottom-panel" id="bottom-panel">
+    <div class="bottom-header">
+        <span style="font-weight:600;">Analysis Results</span>
+        <button class="panel-close" id="bottom-close">&times;</button>
+    </div>
+    <div class="bottom-body" id="bottom-body"></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+let DB, scene, camera, renderer, controls, composer, bloomPass;
+let nodeGroup, linkGroup, labelGroup, moleculeGroup;
+let raycaster, mouse, clock;
+let nodeMeshes = [], nodeDataMap = new Map();
+let hoveredObj = null, selectedObj = null;
+let showLabels = false, showLinks = true, glowOn = true, autoRotate = true;
+let currentView = 'network';
+let targetPositions = new Map();
+
+// ========== DATA ==========
+async function loadData() {
+    try {
+        const r = await fetch('/api/database');
+        DB = await r.json();
+    } catch {
+        const r = await fetch('data/hla_t2d_db.json');
+        DB = await r.json();
+    }
+}
+
+// ========== THREE SETUP ==========
+function initScene() {
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x030712, 0.006);
+    camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 15, 55);
+    renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.4, 0.85);
+    composer.addPass(bloomPass);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.4;
+    controls.minDistance = 12;
+    controls.maxDistance = 120;
+
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+    clock = new THREE.Clock();
+
+    nodeGroup = new THREE.Group();
+    linkGroup = new THREE.Group();
+    labelGroup = new THREE.Group();
+    moleculeGroup = new THREE.Group();
+    scene.add(nodeGroup, linkGroup, labelGroup, moleculeGroup);
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0x303050, 0.6));
+    const l1 = new THREE.PointLight(0xef4444, 2, 100); l1.position.set(25, 25, 25); scene.add(l1);
+    const l2 = new THREE.PointLight(0x3b82f6, 1.5, 100); l2.position.set(-25, -15, -25); scene.add(l2);
+    const l3 = new THREE.PointLight(0x10b981, 1, 80); l3.position.set(0, 35, -10); scene.add(l3);
+
+    // Stars
+    const sg = new THREE.BufferGeometry();
+    const sp = new Float32Array(3000*3);
+    for(let i=0;i<3000;i++){sp[i*3]=(Math.random()-0.5)*500;sp[i*3+1]=(Math.random()-0.5)*500;sp[i*3+2]=(Math.random()-0.5)*500;}
+    sg.setAttribute('position', new THREE.BufferAttribute(sp,3));
+    scene.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0x1e293b, size:0.25, sizeAttenuation:true})));
+
+    // Grid
+    const grid = new THREE.GridHelper(120, 30, 0x111827, 0x0f172a);
+    grid.position.y = -20;
+    scene.add(grid);
+
+    addEventListener('resize', () => {
+        camera.aspect = innerWidth/innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight);
+    });
+    renderer.domElement.addEventListener('mousemove', onMove);
+    renderer.domElement.addEventListener('click', onClickScene);
+}
+
+// ========== NODE CREATION ==========
+function clearNodes() {
+    while(nodeGroup.children.length) nodeGroup.remove(nodeGroup.children[0]);
+    while(linkGroup.children.length) linkGroup.remove(linkGroup.children[0]);
+    while(labelGroup.children.length) labelGroup.remove(labelGroup.children[0]);
+    while(moleculeGroup.children.length) moleculeGroup.remove(moleculeGroup.children[0]);
+    nodeMeshes = [];
+    nodeDataMap.clear();
+    targetPositions.clear();
+}
+
+function createSphere(radius, color, emissiveIntensity = 0.4) {
+    return new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 24, 24),
+        new THREE.MeshPhysicalMaterial({
+            color, emissive: color, emissiveIntensity,
+            metalness: 0.2, roughness: 0.5, transparent: true, opacity: 0.92, clearcoat: 0.4
+        })
+    );
+}
+
+function createLabel(text, color) {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    c.width = 256; c.height = 64;
+    ctx.font = 'bold 24px -apple-system, sans-serif';
+    ctx.fillStyle = typeof color === 'string' ? color : '#'+color.getHexString();
+    ctx.textAlign = 'center';
+    ctx.fillText(text, 128, 40);
+    const t = new THREE.CanvasTexture(c);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({map:t, transparent:true, opacity:0.85}));
+    s.scale.set(5, 1.25, 1);
+    return s;
+}
+
+function createLine(p1, p2, color, opacity=0.15) {
+    const g = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+    return new THREE.Line(g, new THREE.LineBasicMaterial({color, transparent:true, opacity}));
+}
+
+// ========== VIEWS ==========
+function buildNetworkView() {
+    clearNodes();
+    const alleles = DB.allele_associations;
+    const snps = DB.snp_associations;
+    const genes = DB.hla_genes;
+    const geneKeys = Object.keys(genes);
+
+    // Central T2D node
+    const t2dNode = createSphere(2.5, new THREE.Color('#f59e0b'), 0.8);
+    t2dNode.position.set(0, 0, 0);
+    t2dNode.userData = { type: 'phenotype', data: { name: 'Type 2 Diabetes', description: 'Complex metabolic disorder with HLA immune-mediated component' }};
+    nodeGroup.add(t2dNode);
+    nodeMeshes.push(t2dNode);
+    nodeDataMap.set(t2dNode, t2dNode.userData);
+
+    const t2dLabel = createLabel('Type 2 Diabetes', '#f59e0b');
+    t2dLabel.position.set(0, 4, 0);
+    t2dLabel.visible = true; // Always show
+    labelGroup.add(t2dLabel);
+
+    // LADA node
+    const ladaNode = createSphere(1.8, new THREE.Color('#ec4899'), 0.6);
+    ladaNode.position.set(8, 6, 0);
+    ladaNode.userData = { type: 'phenotype', data: { name: 'LADA', description: 'Latent Autoimmune Diabetes in Adults — hybrid T1D/T2D' }};
+    nodeGroup.add(ladaNode);
+    nodeMeshes.push(ladaNode);
+    nodeDataMap.set(ladaNode, ladaNode.userData);
+    linkGroup.add(createLine(t2dNode.position, ladaNode.position, 0xec4899, 0.25));
+
+    const ladaLabel = createLabel('LADA', '#ec4899');
+    ladaLabel.position.set(8, 8.5, 0);
+    ladaLabel.visible = true;
+    labelGroup.add(ladaLabel);
+
+    // Gene hub nodes
+    const geneRadius = 20;
+    const genePositions = {};
+    geneKeys.forEach((gk, i) => {
+        const angle = (i / geneKeys.length) * Math.PI * 2 - Math.PI/2;
+        const pos = new THREE.Vector3(Math.cos(angle) * geneRadius, (Math.random()-0.5)*5, Math.sin(angle) * geneRadius);
+        genePositions[gk] = pos;
+
+        const gInfo = genes[gk];
+        const color = new THREE.Color(gInfo.color);
+        const node = createSphere(1.5, color, 0.5);
+        node.position.copy(pos);
+        node.userData = { type: 'gene', data: { gene: gk, ...gInfo }};
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+
+        const lbl = createLabel(gk.replace('HLA-',''), gInfo.color);
+        lbl.position.copy(pos); lbl.position.y += 2.5;
+        lbl.visible = true;
+        labelGroup.add(lbl);
+    });
+
+    // Allele nodes around their gene
+    alleles.forEach((a, idx) => {
+        const geneName = a.gene;
+        const genePos = genePositions[geneName];
+        if (!genePos) return;
+
+        const geneAlleles = alleles.filter(x => x.gene === geneName);
+        const aIdx = geneAlleles.indexOf(a);
+        const angle = (aIdx / Math.max(geneAlleles.length, 1)) * Math.PI * 2;
+        const r = 5 + Math.random() * 2;
+        const pos = new THREE.Vector3(
+            genePos.x + Math.cos(angle) * r,
+            genePos.y + (Math.random()-0.5)*3,
+            genePos.z + Math.sin(angle) * r
+        );
+
+        const isRisk = a.association === 'risk';
+        const color = new THREE.Color(isRisk ? '#ef4444' : '#10b981');
+        const size = 0.4 + Math.abs(Math.log(a.odds_ratio)) * 1.2;
+        const node = createSphere(size, color, isRisk ? 0.6 : 0.4);
+        node.position.copy(pos);
+        node.userData = { type: 'allele', data: a };
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+        targetPositions.set(node, pos.clone());
+
+        // Link to gene
+        linkGroup.add(createLine(pos, genePos, new THREE.Color(genes[geneName]?.color || '#999'), 0.1));
+        // Link to T2D
+        const linkTarget = a.phenotype.includes('LADA') && !a.phenotype.includes('T2D') ? ladaNode.position : t2dNode.position;
+        linkGroup.add(createLine(pos, linkTarget, isRisk ? 0xef4444 : 0x10b981, 0.08));
+
+        const lbl = createLabel(a.allele.replace('HLA-',''), isRisk ? '#ef4444' : '#10b981');
+        lbl.position.copy(pos); lbl.position.y += size + 1;
+        lbl.visible = showLabels;
+        lbl.userData = { parentMesh: node };
+        labelGroup.add(lbl);
+    });
+
+    // SNP nodes
+    snps.forEach((s, i) => {
+        const geneName = s.gene;
+        const genePos = genePositions[geneName] || new THREE.Vector3(0, -10, 0);
+        const angle = Math.PI + (i / snps.length) * Math.PI;
+        const pos = new THREE.Vector3(
+            genePos.x + Math.cos(angle) * 7,
+            genePos.y - 3,
+            genePos.z + Math.sin(angle) * 7
+        );
+        const color = new THREE.Color('#8b5cf6');
+        const node = createSphere(0.5, color, 0.3);
+        node.position.copy(pos);
+        node.userData = { type: 'snp', data: s };
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+
+        linkGroup.add(createLine(pos, genePos, 0x8b5cf6, 0.08));
+        linkGroup.add(createLine(pos, t2dNode.position, 0x8b5cf6, 0.05));
+
+        const lbl = createLabel(s.rsid, '#8b5cf6');
+        lbl.position.copy(pos); lbl.position.y += 1.2;
+        lbl.visible = showLabels;
+        labelGroup.add(lbl);
+    });
+
+    linkGroup.visible = showLinks;
+}
+
+function buildChromosomeView() {
+    clearNodes();
+    const mhcStart = 28510120;
+    const mhcEnd = 33480577;
+    const range = mhcEnd - mhcStart;
+    const scale = 80 / range;
+
+    // Chromosome ribbon
+    const points = [];
+    for (let i = 0; i <= 100; i++) {
+        const t = i / 100;
+        points.push(new THREE.Vector3((t - 0.5) * 80, Math.sin(t * Math.PI * 3) * 0.5, 0));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tubeGeo = new THREE.TubeGeometry(curve, 100, 0.8, 8, false);
+    const tubeMat = new THREE.MeshPhysicalMaterial({ color: 0x334155, emissive: 0x1e293b, emissiveIntensity: 0.3, metalness: 0.5, roughness: 0.3, transparent: true, opacity: 0.6 });
+    moleculeGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+
+    // Class I region label
+    const c1Label = createLabel('Class I', '#e74c3c');
+    c1Label.position.set(-15, 4, 0); c1Label.visible = true;
+    labelGroup.add(c1Label);
+    // Class II region label
+    const c2Label = createLabel('Class II', '#3498db');
+    c2Label.position.set(15, 4, 0); c2Label.visible = true;
+    labelGroup.add(c2Label);
+
+    // Gene markers on chromosome
+    Object.entries(DB.hla_genes).forEach(([gk, g]) => {
+        const midPos = (g.chromosome_position.start + g.chromosome_position.end) / 2;
+        const x = ((midPos - mhcStart) / range - 0.5) * 80;
+        const y = Math.sin(((midPos - mhcStart) / range) * Math.PI * 3) * 0.5;
+        const color = new THREE.Color(g.color);
+        const node = createSphere(1.2, color, 0.5);
+        node.position.set(x, y, 0);
+        node.userData = { type: 'gene', data: { gene: gk, ...g }};
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+
+        const lbl = createLabel(gk.replace('HLA-',''), g.color);
+        lbl.position.set(x, y + 3, 0); lbl.visible = true;
+        labelGroup.add(lbl);
+
+        // Alleles floating above gene
+        const geneAlleles = DB.allele_associations.filter(a => a.gene === gk);
+        geneAlleles.forEach((a, i) => {
+            const isRisk = a.association === 'risk';
+            const aColor = new THREE.Color(isRisk ? '#ef4444' : '#10b981');
+            const aNode = createSphere(0.5 + Math.abs(Math.log(a.odds_ratio)) * 0.8, aColor, isRisk ? 0.6 : 0.4);
+            const ay = 5 + i * 3;
+            const az = (Math.random() - 0.5) * 4;
+            aNode.position.set(x + (Math.random()-0.5)*3, ay, az);
+            aNode.userData = { type: 'allele', data: a };
+            nodeGroup.add(aNode);
+            nodeMeshes.push(aNode);
+            nodeDataMap.set(aNode, aNode.userData);
+            targetPositions.set(aNode, aNode.position.clone());
+
+            linkGroup.add(createLine(aNode.position, node.position, isRisk ? 0xef4444 : 0x10b981, 0.1));
+
+            const albl = createLabel(a.allele.replace('HLA-',''), isRisk ? '#ef4444' : '#10b981');
+            albl.position.copy(aNode.position); albl.position.y += 1;
+            albl.visible = showLabels;
+            labelGroup.add(albl);
+        });
+    });
+
+    // SNPs on chromosome
+    DB.snp_associations.forEach(s => {
+        const x = ((s.position - mhcStart) / range - 0.5) * 80;
+        const y = Math.sin(((s.position - mhcStart) / range) * Math.PI * 3) * 0.5;
+        const node = createSphere(0.4, new THREE.Color('#8b5cf6'), 0.3);
+        node.position.set(x, y - 2, 0);
+        node.userData = { type: 'snp', data: s };
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+
+        const lbl = createLabel(s.rsid, '#8b5cf6');
+        lbl.position.set(x, y - 3.5, 0); lbl.visible = showLabels;
+        labelGroup.add(lbl);
+    });
+
+    linkGroup.visible = showLinks;
+}
+
+function buildMoleculeView() {
+    clearNodes();
+
+    // Build simplified MHC Class II molecule
+    // Alpha chain helix
+    const alphaPoints = [];
+    for (let t = 0; t < Math.PI * 4; t += 0.1) {
+        alphaPoints.push(new THREE.Vector3(
+            Math.cos(t) * 3 - 4,
+            t * 1.5 - 8,
+            Math.sin(t) * 3
+        ));
+    }
+    const alphaCurve = new THREE.CatmullRomCurve3(alphaPoints);
+    const alphaGeo = new THREE.TubeGeometry(alphaCurve, 60, 0.6, 8, false);
+    const alphaMat = new THREE.MeshPhysicalMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 0.3, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.8 });
+    moleculeGroup.add(new THREE.Mesh(alphaGeo, alphaMat));
+
+    // Beta chain helix
+    const betaPoints = [];
+    for (let t = 0; t < Math.PI * 4; t += 0.1) {
+        betaPoints.push(new THREE.Vector3(
+            Math.cos(t + Math.PI) * 3 + 4,
+            t * 1.5 - 8,
+            Math.sin(t + Math.PI) * 3
+        ));
+    }
+    const betaCurve = new THREE.CatmullRomCurve3(betaPoints);
+    const betaGeo = new THREE.TubeGeometry(betaCurve, 60, 0.6, 8, false);
+    const betaMat = new THREE.MeshPhysicalMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.3, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.8 });
+    moleculeGroup.add(new THREE.Mesh(betaGeo, betaMat));
+
+    // Peptide binding groove (top platform)
+    const grooveGeo = new THREE.BoxGeometry(10, 0.5, 5);
+    const grooveMat = new THREE.MeshPhysicalMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.4, transparent: true, opacity: 0.5 });
+    const groove = new THREE.Mesh(grooveGeo, grooveMat);
+    groove.position.set(0, 10, 0);
+    moleculeGroup.add(groove);
+
+    // Peptide in groove
+    const pepPoints = [];
+    for (let i = 0; i <= 10; i++) {
+        pepPoints.push(new THREE.Vector3((i/10 - 0.5) * 8, 10.5, Math.sin(i * 0.8) * 1.5));
+    }
+    const pepCurve = new THREE.CatmullRomCurve3(pepPoints);
+    const pepGeo = new THREE.TubeGeometry(pepCurve, 20, 0.3, 6, false);
+    const pepMat = new THREE.MeshPhysicalMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.6, metalness: 0.1, roughness: 0.3 });
+    moleculeGroup.add(new THREE.Mesh(pepGeo, pepMat));
+
+    // Labels
+    const labels = [
+        { text: 'Alpha Chain (DQA1)', pos: [-6, 2, 4], color: '#3b82f6' },
+        { text: 'Beta Chain (DQB1)', pos: [6, 2, 4], color: '#10b981' },
+        { text: 'Peptide Binding Groove', pos: [0, 13, 0], color: '#f59e0b' },
+        { text: 'Diabetogenic Peptide', pos: [0, 12, 3], color: '#ef4444' },
+        { text: 'Position 57 (Asp/Non-Asp)', pos: [5, 10, -3], color: '#ec4899' },
+    ];
+    labels.forEach(l => {
+        const lbl = createLabel(l.text, l.color);
+        lbl.position.set(...l.pos);
+        lbl.visible = true;
+        labelGroup.add(lbl);
+    });
+
+    // Position 57 marker
+    const p57 = createSphere(0.5, new THREE.Color('#ec4899'), 1.0);
+    p57.position.set(3, 10, -2);
+    p57.userData = { type: 'residue', data: {
+        name: 'DQB1 Position 57',
+        description: 'The single most important amino acid for diabetes risk. Asp57 forms a salt bridge stabilizing the P9 pocket. Non-Asp57 (Ala, Val, Ser) allows diabetogenic peptide binding.',
+        mechanism: DB.biological_mechanisms.find(m => m.id === 'asp57_effect')?.relevance_to_t2d || ''
+    }};
+    nodeGroup.add(p57);
+    nodeMeshes.push(p57);
+    nodeDataMap.set(p57, p57.userData);
+
+    // Key allele nodes floating around molecule
+    const keyAlleles = DB.allele_associations.filter(a => a.gene.includes('DQ'));
+    keyAlleles.forEach((a, i) => {
+        const angle = (i / keyAlleles.length) * Math.PI * 2;
+        const r = 15;
+        const isRisk = a.association === 'risk';
+        const color = new THREE.Color(isRisk ? '#ef4444' : '#10b981');
+        const node = createSphere(0.6 + Math.abs(Math.log(a.odds_ratio)) * 0.8, color, isRisk ? 0.5 : 0.3);
+        node.position.set(Math.cos(angle)*r, 5 + (Math.random()-0.5)*10, Math.sin(angle)*r);
+        node.userData = { type: 'allele', data: a };
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+        targetPositions.set(node, node.position.clone());
+
+        linkGroup.add(createLine(node.position, groove.position, isRisk ? 0xef4444 : 0x10b981, 0.06));
+
+        const lbl = createLabel(a.allele.replace('HLA-',''), isRisk ? '#ef4444' : '#10b981');
+        lbl.position.copy(node.position); lbl.position.y += 1.5;
+        lbl.visible = showLabels;
+        labelGroup.add(lbl);
+    });
+
+    linkGroup.visible = showLinks;
+}
+
+function buildHaplotypeView() {
+    clearNodes();
+    const haps = DB.haplotype_risks;
+
+    // Central risk axis
+    const axisGeo = new THREE.CylinderGeometry(0.15, 0.15, 40, 8);
+    const axisMat = new THREE.MeshBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.3 });
+    const axis = new THREE.Mesh(axisGeo, axisMat);
+    moleculeGroup.add(axis);
+
+    // Labels at axis ends
+    const topL = createLabel('HIGH RISK', '#ef4444');
+    topL.position.set(0, 22, 0); topL.visible = true; labelGroup.add(topL);
+    const botL = createLabel('PROTECTIVE', '#10b981');
+    botL.position.set(0, -22, 0); botL.visible = true; labelGroup.add(botL);
+
+    haps.forEach((h, i) => {
+        // Y position based on OR (log scale)
+        const y = Math.log(h.odds_ratio) * 15;
+        const angle = (i / haps.length) * Math.PI * 2;
+        const r = 12;
+        const pos = new THREE.Vector3(Math.cos(angle) * r, y, Math.sin(angle) * r);
+
+        const color = new THREE.Color(h.color);
+        const size = 1.0 + Math.abs(Math.log(h.odds_ratio)) * 1.5;
+        const node = createSphere(size, color, h.odds_ratio > 1 ? 0.6 : 0.4);
+        node.position.copy(pos);
+        node.userData = { type: 'haplotype', data: h };
+        nodeGroup.add(node);
+        nodeMeshes.push(node);
+        nodeDataMap.set(node, node.userData);
+        targetPositions.set(node, pos.clone());
+
+        // Link to axis at same Y
+        linkGroup.add(createLine(pos, new THREE.Vector3(0, y, 0), color, 0.15));
+
+        const lbl = createLabel(h.haplotype.split('(')[0].trim(), h.color);
+        lbl.position.copy(pos); lbl.position.y += size + 1.5;
+        lbl.visible = true;
+        labelGroup.add(lbl);
+
+        // OR label
+        const orLbl = createLabel(`OR: ${h.odds_ratio}`, h.odds_ratio > 1 ? '#ef4444' : '#10b981');
+        orLbl.position.copy(pos); orLbl.position.y -= size + 0.5;
+        orLbl.scale.set(3, 0.75, 1);
+        orLbl.visible = true;
+        labelGroup.add(orLbl);
+    });
+
+    linkGroup.visible = showLinks;
+}
+
+// ========== SWITCH VIEW ==========
+function switchView(view) {
+    currentView = view;
+    if (view === 'network') buildNetworkView();
+    else if (view === 'chromosome') buildChromosomeView();
+    else if (view === 'molecule') buildMoleculeView();
+    else if (view === 'haplotypes') buildHaplotypeView();
+}
+
+// ========== INTERACTION ==========
+function onMove(e) {
+    mouse.x = (e.clientX / innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(nodeMeshes);
+    const tip = document.getElementById('tooltip');
+    if (hits.length) {
+        const obj = hits[0].object;
+        if (hoveredObj !== obj) {
+            resetHover();
+            hoveredObj = obj;
+            obj.material.emissiveIntensity = 1.2;
+            obj.scale.setScalar(1.25);
+            document.body.style.cursor = 'pointer';
+        }
+        const d = obj.userData;
+        let html = '';
+        if (d.type === 'allele') html = `<strong>${d.data.allele}</strong> — OR: ${d.data.odds_ratio} (${d.data.association})`;
+        else if (d.type === 'gene') html = `<strong>${d.data.gene || d.data.full_name}</strong> — Class ${d.data.class}`;
+        else if (d.type === 'snp') html = `<strong>${d.data.rsid}</strong> — ${d.data.gene} (OR: ${d.data.odds_ratio})`;
+        else if (d.type === 'haplotype') html = `<strong>${d.data.haplotype}</strong> — ${d.data.risk_category}`;
+        else if (d.type === 'phenotype') html = `<strong>${d.data.name}</strong>`;
+        else if (d.type === 'residue') html = `<strong>${d.data.name}</strong>`;
+        tip.innerHTML = html;
+        tip.style.left = (e.clientX+12)+'px';
+        tip.style.top = (e.clientY-8)+'px';
+        tip.classList.add('active');
+    } else {
+        resetHover();
+        tip.classList.remove('active');
+        document.body.style.cursor = 'default';
+    }
+}
+
+function resetHover() {
+    if (hoveredObj && hoveredObj !== selectedObj) {
+        hoveredObj.material.emissiveIntensity = 0.4;
+        hoveredObj.scale.setScalar(1.0);
+    }
+    hoveredObj = null;
+}
+
+function onClickScene() {
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(nodeMeshes);
+    if (hits.length) {
+        const obj = hits[0].object;
+        if (selectedObj && selectedObj !== obj) {
+            selectedObj.material.emissiveIntensity = 0.4;
+            selectedObj.scale.setScalar(1.0);
+        }
+        selectedObj = obj;
+        obj.material.emissiveIntensity = 1.5;
+        obj.scale.setScalar(1.35);
+        showDetail(obj.userData);
+    } else {
+        if (selectedObj) { selectedObj.material.emissiveIntensity = 0.4; selectedObj.scale.setScalar(1.0); selectedObj = null; }
+        document.getElementById('right-panel').classList.remove('active');
+    }
+}
+
+function showDetail(ud) {
+    const panel = document.getElementById('right-panel');
+    const content = document.getElementById('detail-content');
+    let html = '';
+
+    if (ud.type === 'allele') {
+        const a = ud.data;
+        const isRisk = a.association === 'risk';
+        const orClass = isRisk ? 'or-risk' : 'or-protect';
+        html = `
+            <div class="detail-allele" style="color:${isRisk ? 'var(--risk)' : 'var(--protect)'};">${a.allele}</div>
+            <div class="detail-gene">${a.gene} — Class ${a.class}</div>
+            <div class="detail-divider"></div>
+            <div style="text-align:center;margin:0.5rem 0;">
+                <span class="or-badge ${orClass}">OR: ${a.odds_ratio} (${a.ci_lower}–${a.ci_upper})</span>
+            </div>
+            <div class="detail-row"><span class="detail-label">Association</span><span class="detail-value" style="color:${isRisk?'var(--risk)':'var(--protect)'};">${a.association.toUpperCase()}</span></div>
+            <div class="detail-row"><span class="detail-label">Phenotype</span><span class="detail-value">${a.phenotype}</span></div>
+            <div class="detail-row"><span class="detail-label">P-value</span><span class="detail-value">${a.p_value.toExponential(1)}</span></div>
+            <div class="detail-row"><span class="detail-label">Evidence</span><span class="detail-value">Level ${a.evidence_level}</span></div>
+            <div class="detail-row"><span class="detail-label">Haplotype</span><span class="detail-value" style="font-size:0.75rem;">${a.haplotype}</span></div>
+            <div class="detail-section">Population Frequencies</div>
+            <div class="freq-bars">
+                ${['european','asian','african','latin_american'].map(pop => {
+                    const val = a['frequency_'+pop] || 0;
+                    const pct = val * 100;
+                    const label = pop === 'latin_american' ? 'LatAm' : pop.charAt(0).toUpperCase()+pop.slice(1);
+                    return `<div class="freq-row">
+                        <span class="freq-label">${label}</span>
+                        <div class="freq-bar-bg"><div class="freq-bar-fill" style="width:${pct*2}%;background:${isRisk?'var(--risk)':'var(--protect)'};"></div></div>
+                        <span class="freq-val">${pct.toFixed(1)}%</span>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div class="detail-section">Description</div>
+            <div class="detail-desc">${a.description}</div>
+            <div class="detail-section">Mechanism</div>
+            <div class="detail-mech">${a.mechanism}</div>
+            <div class="detail-section">References</div>
+            <div class="detail-desc">${(a.key_references||[]).map(r => `<a href="https://pubmed.ncbi.nlm.nih.gov/${r.replace('PMID:','')}" target="_blank" style="color:var(--cyan);">${r}</a>`).join(', ')}</div>
+        `;
+    } else if (ud.type === 'gene') {
+        const g = ud.data;
+        html = `
+            <div class="detail-allele" style="color:${g.color};">${g.gene || g.full_name}</div>
+            <div class="detail-gene">${g.full_name || ''}</div>
+            <div class="detail-divider"></div>
+            <div class="detail-row"><span class="detail-label">Class</span><span class="detail-value">${g.class}</span></div>
+            <div class="detail-row"><span class="detail-label">Position</span><span class="detail-value">chr6:${g.chromosome_position?.start?.toLocaleString()}–${g.chromosome_position?.end?.toLocaleString()}</span></div>
+            <div class="detail-section">Function</div>
+            <div class="detail-desc">${g.function || ''}</div>
+            <div class="detail-section">Role in T2D</div>
+            <div class="detail-mech">${g.role_in_t2d || ''}</div>
+        `;
+    } else if (ud.type === 'snp') {
+        const s = ud.data;
+        html = `
+            <div class="detail-allele" style="color:var(--purple);">${s.rsid}</div>
+            <div class="detail-gene">${s.gene} — chr6:${s.position?.toLocaleString()}</div>
+            <div class="detail-divider"></div>
+            <div style="text-align:center;margin:0.5rem 0;">
+                <span class="or-badge ${s.association==='risk'?'or-risk':'or-protect'}">OR: ${s.odds_ratio}</span>
+            </div>
+            <div class="detail-row"><span class="detail-label">Alleles</span><span class="detail-value">${s.ref} → ${s.alt}</span></div>
+            <div class="detail-row"><span class="detail-label">P-value</span><span class="detail-value">${s.p_value.toExponential(1)}</span></div>
+            <div class="detail-row"><span class="detail-label">Global MAF</span><span class="detail-value">${(s.frequency_global*100).toFixed(1)}%</span></div>
+            <div class="detail-section">Description</div>
+            <div class="detail-desc">${s.description}</div>
+        `;
+    } else if (ud.type === 'haplotype') {
+        const h = ud.data;
+        const isRisk = h.odds_ratio > 1;
+        html = `
+            <div class="detail-allele" style="color:${h.color};">${h.haplotype}</div>
+            <div class="detail-gene">${h.risk_category.replace('_',' ').toUpperCase()}</div>
+            <div class="detail-divider"></div>
+            <div style="text-align:center;margin:0.5rem 0;">
+                <span class="or-badge ${isRisk?'or-risk':'or-protect'}">OR: ${h.odds_ratio}</span>
+            </div>
+            <div class="detail-row"><span class="detail-label">Phenotype</span><span class="detail-value">${h.phenotype}</span></div>
+            <div class="detail-row"><span class="detail-label">Frequency</span><span class="detail-value">${(h.frequency*100).toFixed(1)}%</span></div>
+            <div class="detail-section">Description</div>
+            <div class="detail-desc">${h.description}</div>
+        `;
+    } else if (ud.type === 'residue') {
+        html = `
+            <div class="detail-allele" style="color:var(--pink);">${ud.data.name}</div>
+            <div class="detail-divider"></div>
+            <div class="detail-desc">${ud.data.description}</div>
+            <div class="detail-section">Relevance to T2D</div>
+            <div class="detail-mech">${ud.data.mechanism}</div>
+        `;
+    } else if (ud.type === 'phenotype') {
+        html = `
+            <div class="detail-allele" style="color:var(--warn);">${ud.data.name}</div>
+            <div class="detail-divider"></div>
+            <div class="detail-desc">${ud.data.description}</div>
+        `;
+    }
+
+    content.innerHTML = html;
+    panel.classList.add('active');
+}
+
+// ========== UI ==========
+function initUI() {
+    // Gene list in left panel
+    const geneList = document.getElementById('gene-list');
+    Object.entries(DB.hla_genes).forEach(([gk, g]) => {
+        const div = document.createElement('div');
+        div.className = 'gene-item';
+        div.innerHTML = `<span class="gene-dot" style="background:${g.color};"></span>${gk}<span class="gene-class">Class ${g.class}</span>`;
+        div.addEventListener('click', () => {
+            document.querySelectorAll('.gene-item').forEach(x=>x.classList.remove('active'));
+            div.classList.add('active');
+            showDetail({ type:'gene', data:{ gene:gk, ...g }});
+        });
+        geneList.appendChild(div);
+    });
+
+    // MHC bar
+    const mhcBar = document.getElementById('mhc-bar');
+    const mhcStart = 28510120, mhcEnd = 33480577, range = mhcEnd - mhcStart;
+    Object.entries(DB.hla_genes).forEach(([gk, g]) => {
+        const left = ((g.chromosome_position.start - mhcStart) / range) * 100;
+        const width = Math.max(((g.chromosome_position.end - g.chromosome_position.start) / range) * 100, 2);
+        const mark = document.createElement('div');
+        mark.className = 'mhc-gene-mark';
+        mark.style.cssText = `left:${left}%;width:${width}%;background:${g.color};`;
+        mark.title = gk;
+        mhcBar.appendChild(mark);
+    });
+
+    // Controls
+    document.getElementById('view-select').addEventListener('change', e => switchView(e.target.value));
+    document.getElementById('btn-rotate').addEventListener('click', function() { autoRotate=!autoRotate; controls.autoRotate=autoRotate; this.classList.toggle('active',autoRotate); });
+    document.getElementById('btn-labels').addEventListener('click', function() {
+        showLabels=!showLabels; this.classList.toggle('active',showLabels);
+        labelGroup.children.forEach(l => { if(!l.visible || showLabels) l.visible = showLabels || l.userData?.alwaysVisible; });
+    });
+    document.getElementById('btn-links').addEventListener('click', function() { showLinks=!showLinks; this.classList.toggle('active',showLinks); linkGroup.visible=showLinks; });
+    document.getElementById('btn-glow').addEventListener('click', function() { glowOn=!glowOn; this.classList.toggle('active',glowOn); bloomPass.strength=glowOn?0.8:0; });
+    document.getElementById('panel-close').addEventListener('click', () => {
+        document.getElementById('right-panel').classList.remove('active');
+        if(selectedObj){selectedObj.material.emissiveIntensity=0.4;selectedObj.scale.setScalar(1);selectedObj=null;}
+    });
+    document.getElementById('bottom-close').addEventListener('click', () => document.getElementById('bottom-panel').classList.remove('active'));
+
+    // Demo analysis
+    document.getElementById('btn-analyze').addEventListener('click', runDemoAnalysis);
+}
+
+async function runDemoAnalysis() {
+    try {
+        const r = await fetch('/api/analyze/demo', {method:'POST'});
+        const report = await r.json();
+        showAnalysisResults(report);
+    } catch(e) {
+        alert('Error: ' + e.message + '. Is the server running?');
+    }
+}
+
+function showAnalysisResults(report) {
+    const panel = document.getElementById('bottom-panel');
+    const body = document.getElementById('bottom-body');
+
+    const riskLabels = { very_high:'VERY HIGH RISK', high:'HIGH RISK', moderate:'MODERATE', low:'LOW RISK', protective:'PROTECTIVE' };
+    const riskColors = { very_high:'var(--risk)', high:'#f97316', moderate:'var(--warn)', low:'var(--cyan)', protective:'var(--protect)' };
+    const riskPct = { very_high:90, high:72, moderate:50, low:28, protective:10 };
+
+    body.innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem;">
+            <div>
+                <div class="panel-title">Risk Assessment</div>
+                <div class="risk-meter">
+                    <div class="risk-bar"><div class="risk-marker" style="left:${riskPct[report.overall_risk]||50}%;"></div></div>
+                </div>
+                <div style="text-align:center;">
+                    <div class="risk-label" style="color:${riskColors[report.overall_risk]};">${riskLabels[report.overall_risk]||report.overall_risk}</div>
+                    <div style="font-size:0.8rem;color:var(--muted);margin-top:0.3rem;">Combined OR: <strong>${report.combined_odds_ratio}</strong></div>
+                    <div style="font-size:0.75rem;color:var(--dim);margin-top:0.2rem;">${report.alleles_analyzed} alleles analyzed, ${report.alleles_found_in_db} in database</div>
+                </div>
+                <div class="panel-title" style="margin-top:0.8rem;">Detected Haplotypes</div>
+                ${report.haplotype_results.map(h => `
+                    <div class="hap-item ${h.detected ? 'hap-detected' : 'hap-not'}">
+                        <span class="hap-dot" style="background:${h.detected ? (h.odds_ratio>1?'var(--risk)':'var(--protect)') : 'var(--dim)'};"></span>
+                        <span>${h.haplotype.split('(')[0]}</span>
+                        <span style="margin-left:auto;font-size:0.75rem;color:${h.odds_ratio>1?'var(--risk)':'var(--protect)'};">OR:${h.odds_ratio}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <div>
+                <div class="panel-title">Risk Alleles (${report.risk_alleles.length})</div>
+                ${report.risk_alleles.map(a => `
+                    <div style="padding:0.3rem 0;border-bottom:1px solid rgba(100,116,139,0.1);font-size:0.82rem;">
+                        <span style="color:var(--risk);font-weight:700;">${a.allele}</span>
+                        <span style="float:right;color:var(--risk);">OR:${a.odds_ratio} x${a.copies}</span>
+                    </div>
+                `).join('')}
+                <div class="panel-title" style="margin-top:0.8rem;">Protective Alleles (${report.protective_alleles.length})</div>
+                ${report.protective_alleles.map(a => `
+                    <div style="padding:0.3rem 0;border-bottom:1px solid rgba(100,116,139,0.1);font-size:0.82rem;">
+                        <span style="color:var(--protect);font-weight:700;">${a.allele}</span>
+                        <span style="float:right;color:var(--protect);">OR:${a.odds_ratio} x${a.copies}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <div>
+                <div class="panel-title">Recommendations</div>
+                ${report.recommendations.map(r => `<div class="rec-item">${r}</div>`).join('')}
+                <div class="panel-title" style="margin-top:0.8rem;">Mechanisms</div>
+                ${report.mechanisms_involved.map(m => `
+                    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.4rem;">
+                        <strong style="color:var(--cyan);">${m.name}</strong><br>
+                        ${m.relevance_to_t2d}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    panel.classList.add('active');
+}
+
+// ========== ANIMATE ==========
+function animate() {
+    requestAnimationFrame(animate);
+    const elapsed = clock.getElapsedTime();
+
+    nodeMeshes.forEach((m, i) => {
+        const target = targetPositions.get(m);
+        if (target) m.position.lerp(target, 0.03);
+        // Float
+        m.position.y += Math.sin(elapsed * 0.4 + i * 0.9) * 0.002;
+        // Pulse selected
+        if (m === selectedObj) m.material.emissiveIntensity = 1.0 + Math.sin(elapsed*3)*0.4;
+    });
+
+    controls.update();
+    if (glowOn) composer.render();
+    else renderer.render(scene, camera);
+}
+
+// ========== MAIN ==========
+async function main() {
+    await loadData();
+    initScene();
+    initUI();
+    buildNetworkView();
+    animate();
+}
+main();
+</script>
+</body>
+</html>
