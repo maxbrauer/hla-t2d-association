@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLA-T2D Association Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a; --bg2: #1e293b; --bg3: #334155; --border: #475569;
+            --text: #f1f5f9; --muted: #94a3b8; --dim: #64748b;
+            --risk: #ef4444; --protect: #10b981; --warn: #f59e0b;
+            --blue: #3b82f6; --cyan: #06b6d4; --purple: #8b5cf6; --pink: #ec4899;
+            --radius: 10px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+
+        /* Header */
+        header { background:linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #172554 100%); border-bottom:1px solid var(--border); padding:1.2rem 2rem; position:sticky; top:0; z-index:50; }
+        .hdr { max-width:1500px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+        .hdr h1 { font-size:1.4rem; font-weight:700; background:linear-gradient(135deg, var(--risk), var(--warn), var(--cyan)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .hdr-sub { color:var(--dim); font-size:0.8rem; }
+        .tabs { display:flex; gap:3px; background:var(--bg2); padding:3px; border-radius:8px; }
+        .tab { padding:0.4rem 1rem; border:none; background:transparent; color:var(--muted); cursor:pointer; border-radius:6px; font-size:0.82rem; font-weight:500; transition:all 0.2s; }
+        .tab:hover { color:var(--text); background:var(--bg3); }
+        .tab.active { background:var(--blue); color:#fff; }
+
+        .main { max-width:1500px; margin:0 auto; padding:1.5rem 2rem; }
+        .page { display:none; } .page.active { display:block; }
+
+        /* Cards */
+        .card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; margin-bottom:1.25rem; }
+        .card-t { font-size:1rem; font-weight:600; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem; }
+
+        /* Stats */
+        .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:1rem; margin-bottom:1.25rem; }
+        .stat { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; text-align:center; transition:transform 0.2s; }
+        .stat:hover { transform:translateY(-2px); }
+        .stat-v { font-size:1.8rem; font-weight:800; }
+        .stat-l { font-size:0.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.06em; margin-top:0.2rem; }
+
+        /* Charts */
+        .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(380px,1fr)); gap:1.25rem; margin-bottom:1.25rem; }
+        .ch { position:relative; height:300px; }
+
+        /* Table */
+        .tbl-ctrl { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem; align-items:center; }
+        .inp { flex:1; min-width:180px; padding:0.5rem 0.8rem; background:var(--bg); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:0.85rem; }
+        .inp:focus { outline:none; border-color:var(--blue); }
+        .sel { padding:0.5rem 0.6rem; background:var(--bg); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:0.82rem; }
+        table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        th { text-align:left; padding:0.6rem; border-bottom:2px solid var(--border); color:var(--dim); font-weight:600; text-transform:uppercase; font-size:0.72rem; letter-spacing:0.05em; cursor:pointer; white-space:nowrap; }
+        th:hover { color:var(--blue); }
+        td { padding:0.6rem; border-bottom:1px solid rgba(71,85,105,0.4); vertical-align:top; }
+        tr:hover td { background:rgba(59,130,246,0.04); }
+        tr { cursor:pointer; }
+
+        /* Badges */
+        .b { display:inline-block; padding:0.15rem 0.5rem; border-radius:12px; font-size:0.72rem; font-weight:600; }
+        .b-risk { background:rgba(239,68,68,0.12); color:var(--risk); }
+        .b-protect { background:rgba(16,185,129,0.12); color:var(--protect); }
+        .b-a { background:rgba(59,130,246,0.12); color:var(--blue); }
+        .b-b { background:rgba(139,92,246,0.12); color:var(--purple); }
+        .b-c { background:rgba(100,116,139,0.12); color:var(--dim); }
+        .b-i { background:rgba(239,68,68,0.08); color:#fca5a5; }
+        .b-ii { background:rgba(59,130,246,0.08); color:#93c5fd; }
+
+        /* OR Bar inline */
+        .or-bar { display:flex; align-items:center; gap:0.4rem; }
+        .or-track { width:80px; height:6px; background:var(--bg); border-radius:3px; position:relative; }
+        .or-fill { height:100%; border-radius:3px; position:absolute; top:0; }
+        .or-mid { position:absolute; top:-2px; left:50%; width:1px; height:10px; background:var(--dim); }
+        .or-val { font-weight:700; font-size:0.8rem; min-width:35px; }
+
+        /* Modal */
+        .modal-bg { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.65); z-index:100; justify-content:center; align-items:center; padding:2rem; }
+        .modal-bg.open { display:flex; }
+        .modal { background:var(--bg2); border:1px solid var(--border); border-radius:12px; max-width:650px; width:100%; max-height:85vh; overflow-y:auto; padding:1.75rem; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+        .modal-hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1rem; }
+        .modal-x { background:none; border:none; color:var(--dim); font-size:1.4rem; cursor:pointer; }
+        .modal-x:hover { color:#fff; }
+        .modal h2 { font-size:1.2rem; }
+        .modal h4 { font-size:0.72rem; color:var(--dim); text-transform:uppercase; letter-spacing:0.06em; margin-top:1rem; margin-bottom:0.3rem; }
+        .modal p { color:var(--muted); font-size:0.88rem; margin-bottom:0.5rem; }
+        .d-row { display:flex; justify-content:space-between; padding:0.35rem 0; border-bottom:1px solid rgba(71,85,105,0.3); font-size:0.85rem; }
+        .d-l { color:var(--dim); }
+        .d-v { font-weight:600; }
+        .mech-box { background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.15); border-radius:8px; padding:0.7rem; font-size:0.85rem; color:var(--cyan); margin-top:0.4rem; line-height:1.5; }
+        .tag-list { display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.3rem; }
+        .tag { background:var(--bg); border:1px solid var(--border); padding:0.12rem 0.5rem; border-radius:12px; font-size:0.75rem; color:var(--muted); }
+        .freq-row { display:flex; align-items:center; gap:0.4rem; font-size:0.78rem; margin-bottom:0.2rem; }
+        .freq-l { width:50px; color:var(--dim); text-align:right; }
+        .freq-bg { flex:1; height:7px; background:var(--bg); border-radius:3px; }
+        .freq-fill { height:100%; border-radius:3px; }
+        .freq-v { width:35px; color:var(--muted); font-size:0.72rem; }
+
+        /* Analysis */
+        .analysis-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+        @media(max-width:900px){ .analysis-grid{grid-template-columns:1fr;} }
+        .upload-zone { border:2px dashed var(--border); border-radius:var(--radius); padding:2.5rem 1.5rem; text-align:center; cursor:pointer; transition:all 0.3s; }
+        .upload-zone:hover { border-color:var(--blue); background:rgba(59,130,246,0.03); }
+        .upload-zone input { display:none; }
+        .btn { padding:0.5rem 1.2rem; border:none; border-radius:7px; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
+        .btn-p { background:var(--blue); color:#fff; } .btn-p:hover { background:#2563eb; }
+        .btn-r { background:rgba(239,68,68,0.15); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); } .btn-r:hover { background:rgba(239,68,68,0.25); }
+        .btn-s { background:var(--bg); color:var(--text); border:1px solid var(--border); } .btn-s:hover { background:var(--bg3); }
+        .allele-input { width:100%; padding:0.6rem; background:var(--bg); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:0.85rem; font-family:monospace; }
+        .allele-input:focus { outline:none; border-color:var(--blue); }
+        .loading { display:none; text-align:center; padding:2rem; }
+        .loading.on { display:block; }
+        .spinner { width:36px; height:36px; border:3px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:sp 0.7s linear infinite; margin:0 auto 0.8rem; }
+        @keyframes sp { to{transform:rotate(360deg);} }
+
+        /* Results */
+        .results { display:none; }
+        .results.on { display:block; }
+        .risk-meter { position:relative; height:14px; background:linear-gradient(90deg, #10b981, #84cc16, #f59e0b, #f97316, #ef4444); border-radius:7px; margin:0.8rem 0; }
+        .risk-pin { position:absolute; top:-5px; width:24px; height:24px; background:#fff; border:3px solid var(--bg); border-radius:50%; box-shadow:0 0 10px rgba(255,255,255,0.4); transform:translateX(-50%); transition:left 0.6s; }
+        .risk-labels { display:flex; justify-content:space-between; font-size:0.7rem; color:var(--dim); }
+        .res-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1rem; }
+        @media(max-width:700px){ .res-grid{grid-template-columns:1fr;} }
+        .allele-item { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.5rem; border-bottom:1px solid rgba(71,85,105,0.3); font-size:0.82rem; border-radius:4px; }
+        .allele-item:hover { background:rgba(59,130,246,0.04); }
+        .hap-item { padding:0.5rem; border-bottom:1px solid rgba(71,85,105,0.25); }
+        .hap-detected { font-weight:700; }
+        .hap-not { opacity:0.3; }
+        .rec-item { padding:0.3rem 0; font-size:0.82rem; color:var(--muted); }
+        .rec-item::before { content:"→ "; color:var(--cyan); font-weight:700; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:var(--bg); } ::-webkit-scrollbar-thumb { background:var(--bg3); border-radius:3px; }
+        @media(max-width:768px) { .main{padding:1rem;} .charts{grid-template-columns:1fr;} .stats{grid-template-columns:repeat(3,1fr);} }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="hdr">
+        <div>
+            <h1>HLA ↔ Type 2 Diabetes Association</h1>
+            <div class="hdr-sub">Genetic association analysis of HLA alleles with T2D, LADA &amp; metabolic phenotypes</div>
+        </div>
+        <div class="tabs" id="tabs">
+            <button class="tab active" data-p="overview">Overview</button>
+            <button class="tab" data-p="alleles">Alleles</button>
+            <button class="tab" data-p="haplotypes">Haplotypes</button>
+            <button class="tab" data-p="snps">SNPs</button>
+            <button class="tab" data-p="mechanisms">Mechanisms</button>
+            <button class="tab" data-p="analyze">Analyze</button>
+        </div>
+    </div>
+</header>
+
+<div class="main">
+
+<!-- ===== OVERVIEW ===== -->
+<div class="page active" id="p-overview">
+    <div class="stats" id="stats-bar"></div>
+    <div class="charts">
+        <div class="card"><div class="card-t">Alleles by Gene</div><div class="ch"><canvas id="ch-genes"></canvas></div></div>
+        <div class="card"><div class="card-t">Risk vs Protective</div><div class="ch"><canvas id="ch-risk"></canvas></div></div>
+        <div class="card"><div class="card-t">Odds Ratios — All Alleles</div><div class="ch"><canvas id="ch-or"></canvas></div></div>
+        <div class="card"><div class="card-t">Haplotype Risk Landscape</div><div class="ch"><canvas id="ch-hap"></canvas></div></div>
+        <div class="card"><div class="card-t">Population Frequency Comparison (Risk Alleles)</div><div class="ch"><canvas id="ch-pop"></canvas></div></div>
+        <div class="card"><div class="card-t">Evidence Level Distribution</div><div class="ch"><canvas id="ch-ev"></canvas></div></div>
+    </div>
+</div>
+
+<!-- ===== ALLELES ===== -->
+<div class="page" id="p-alleles">
+    <div class="card">
+        <div class="card-t">HLA Allele Associations</div>
+        <div class="tbl-ctrl">
+            <input class="inp" id="a-search" placeholder="Search allele, gene, or keyword...">
+            <select class="sel" id="a-gene"><option value="">All Genes</option></select>
+            <select class="sel" id="a-assoc"><option value="">All</option><option value="risk">Risk</option><option value="protective">Protective</option></select>
+            <select class="sel" id="a-class"><option value="">All Classes</option><option value="I">Class I</option><option value="II">Class II</option></select>
+        </div>
+        <div style="overflow-x:auto;">
+            <table id="a-table"><thead><tr>
+                <th data-s="allele">Allele</th><th data-s="gene">Gene</th><th data-s="class">Class</th>
+                <th data-s="association">Effect</th><th data-s="odds_ratio">Odds Ratio</th>
+                <th data-s="p_value">P-value</th><th data-s="evidence_level">Evidence</th>
+                <th>Phenotype</th><th>Description</th>
+            </tr></thead><tbody id="a-body"></tbody></table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== HAPLOTYPES ===== -->
+<div class="page" id="p-haplotypes">
+    <div class="card">
+        <div class="card-t">Haplotype Risk Profiles</div>
+        <div id="hap-list"></div>
+    </div>
+</div>
+
+<!-- ===== SNPS ===== -->
+<div class="page" id="p-snps">
+    <div class="card">
+        <div class="card-t">GWAS SNP Associations in MHC Region</div>
+        <div style="overflow-x:auto;">
+            <table><thead><tr><th>rsID</th><th>Gene</th><th>Position</th><th>Alleles</th><th>Effect</th><th>OR</th><th>P-value</th><th>MAF</th><th>Evidence</th><th>Description</th></tr></thead>
+            <tbody id="snp-body"></tbody></table>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-t">MHC Region SNP Map (chr6)</div>
+        <div class="ch" style="height:200px;"><canvas id="ch-snpmap"></canvas></div>
+    </div>
+</div>
+
+<!-- ===== MECHANISMS ===== -->
+<div class="page" id="p-mechanisms">
+    <div id="mech-list"></div>
+</div>
+
+<!-- ===== ANALYZE ===== -->
+<div class="page" id="p-analyze">
+    <div class="analysis-grid">
+        <div>
+            <div class="card">
+                <div class="card-t">Enter HLA Typing</div>
+                <textarea class="allele-input" id="allele-text" rows="5" placeholder="Enter HLA alleles separated by commas, e.g.:&#10;DRB1*03:01, DRB1*15:01, DQB1*02:01, DQB1*06:02, A*24:02"></textarea>
+                <div style="margin-top:0.8rem; display:flex; gap:0.5rem; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn btn-p" id="btn-run">Analyze</button>
+                    <button class="btn btn-r" id="btn-demo">Run Demo</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-t">Upload CSV</div>
+                <div class="upload-zone" id="drop">
+                    <strong>Drop CSV here or click</strong>
+                    <p style="font-size:0.8rem;color:var(--dim);margin-top:0.3rem;">Column: allele (e.g. DRB1*03:01)</p>
+                    <input type="file" id="file-in" accept=".csv">
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="loading" id="loading"><div class="spinner"></div><p>Analyzing HLA associations...</p></div>
+            <div class="results" id="results"></div>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal">
+    <div class="modal">
+        <div class="modal-hdr"><div><h2 id="m-title"></h2><span style="color:var(--dim);" id="m-sub"></span></div><button class="modal-x" id="m-close">&times;</button></div>
+        <div id="m-body"></div>
+    </div>
+</div>
+
+<script>
+let DB;
+let allAlleles = [];
+let sortState = { key:'odds_ratio', dir:-1 };
+let charts = {};
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadDB();
+    initTabs();
+    renderOverview();
+    initAlleles();
+    renderHaplotypes();
+    renderSNPs();
+    renderMechanisms();
+    initAnalysis();
+});
+
+async function loadDB() {
+    try { DB = await (await fetch('/api/database')).json(); }
+    catch { DB = await (await fetch('data/hla_t2d_db.json')).json(); }
+    allAlleles = DB.allele_associations;
+}
+
+// TABS
+function initTabs() {
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById('p-'+t.dataset.p).classList.add('active');
+    }));
+}
+
+// ===== OVERVIEW =====
+function renderOverview() {
+    const a = allAlleles, snps = DB.snp_associations, haps = DB.haplotype_risks, genes = DB.hla_genes;
+    const riskN = a.filter(x=>x.association==='risk').length;
+    const protN = a.filter(x=>x.association==='protective').length;
+    const classI = a.filter(x=>x.class==='I').length;
+    const classII = a.filter(x=>x.class==='II').length;
+    const maxOR = Math.max(...a.map(x=>x.odds_ratio)).toFixed(2);
+
+    document.getElementById('stats-bar').innerHTML = [
+        {v:a.length, l:'Allele Associations', c:'var(--blue)'},
+        {v:Object.keys(genes).length, l:'HLA Genes', c:'var(--cyan)'},
+        {v:snps.length, l:'GWAS SNPs', c:'var(--purple)'},
+        {v:haps.length, l:'Haplotypes', c:'var(--warn)'},
+        {v:riskN, l:'Risk Alleles', c:'var(--risk)'},
+        {v:protN, l:'Protective', c:'var(--protect)'},
+        {v:`${classI}/${classII}`, l:'Class I / II', c:'var(--pink)'},
+        {v:maxOR, l:'Max OR', c:'var(--risk)'},
+    ].map(s=>`<div class="stat"><div class="stat-v" style="color:${s.c};">${s.v}</div><div class="stat-l">${s.l}</div></div>`).join('');
+
+    // Chart: Alleles by gene
+    const geneCounts = {};
+    a.forEach(x => geneCounts[x.gene]=(geneCounts[x.gene]||0)+1);
+    const gLabels = Object.keys(geneCounts);
+    const gColors = gLabels.map(g => genes[g]?.color || '#999');
+    charts.genes?.destroy();
+    charts.genes = new Chart(document.getElementById('ch-genes'), {
+        type:'doughnut', data:{ labels:gLabels, datasets:[{data:Object.values(geneCounts), backgroundColor:gColors, borderWidth:0}] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{color:'#94a3b8',font:{size:11}} } } }
+    });
+
+    // Chart: Risk vs protective
+    charts.risk?.destroy();
+    charts.risk = new Chart(document.getElementById('ch-risk'), {
+        type:'pie', data:{ labels:['Risk','Protective'], datasets:[{data:[riskN,protN], backgroundColor:['#ef4444','#10b981'], borderWidth:0}] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{color:'#94a3b8'} } } }
+    });
+
+    // Chart: OR horizontal bar
+    const sorted = [...a].sort((x,y)=> x.odds_ratio - y.odds_ratio);
+    charts.or?.destroy();
+    charts.or = new Chart(document.getElementById('ch-or'), {
+        type:'bar', data:{
+            labels: sorted.map(x=>x.allele.replace('HLA-','')),
+            datasets:[{
+                label:'Odds Ratio',
+                data: sorted.map(x=> x.odds_ratio),
+                backgroundColor: sorted.map(x=> x.odds_ratio>1 ? 'rgba(239,68,68,0.7)' : 'rgba(16,185,129,0.7)'),
+                borderRadius:4,
+            }]
+        },
+        options:{
+            indexAxis:'y', responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false}, annotation:{ annotations:{ line1:{ type:'line', xMin:1, xMax:1, borderColor:'#64748b', borderDash:[4,4] } } } },
+            scales:{ x:{ grid:{color:'rgba(71,85,105,0.3)'}, ticks:{color:'#94a3b8'}, title:{display:true,text:'Odds Ratio',color:'#94a3b8'} }, y:{ grid:{display:false}, ticks:{color:'#94a3b8',font:{size:10}} } }
+        }
+    });
+
+    // Chart: Haplotype risk
+    const hapSorted = [...haps].sort((x,y)=>x.odds_ratio-y.odds_ratio);
+    charts.hap?.destroy();
+    charts.hap = new Chart(document.getElementById('ch-hap'), {
+        type:'bar', data:{
+            labels: hapSorted.map(h=>h.haplotype.split('(')[0].trim()),
+            datasets:[{ label:'OR', data:hapSorted.map(h=>h.odds_ratio), backgroundColor:hapSorted.map(h=>h.color), borderRadius:6 }]
+        },
+        options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false} },
+            scales:{ y:{ grid:{color:'rgba(71,85,105,0.3)'}, ticks:{color:'#94a3b8'}, title:{display:true,text:'Odds Ratio',color:'#94a3b8'} }, x:{ grid:{display:false}, ticks:{color:'#94a3b8',font:{size:9},maxRotation:35} } }
+        }
+    });
+
+    // Chart: Population frequencies (risk alleles only)
+    const riskAlleles = a.filter(x=>x.association==='risk' && x.frequency_european);
+    charts.pop?.destroy();
+    charts.pop = new Chart(document.getElementById('ch-pop'), {
+        type:'bar', data:{
+            labels: riskAlleles.map(x=>x.allele.replace('HLA-','')),
+            datasets:[
+                {label:'European', data:riskAlleles.map(x=>(x.frequency_european||0)*100), backgroundColor:'rgba(59,130,246,0.7)', borderRadius:3},
+                {label:'Asian', data:riskAlleles.map(x=>(x.frequency_asian||0)*100), backgroundColor:'rgba(239,68,68,0.7)', borderRadius:3},
+                {label:'African', data:riskAlleles.map(x=>(x.frequency_african||0)*100), backgroundColor:'rgba(16,185,129,0.7)', borderRadius:3},
+                {label:'Latin American', data:riskAlleles.map(x=>(x.frequency_latin_american||0)*100), backgroundColor:'rgba(245,158,11,0.7)', borderRadius:3},
+            ]
+        },
+        options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{color:'#94a3b8',font:{size:10}} } },
+            scales:{ y:{ grid:{color:'rgba(71,85,105,0.3)'}, ticks:{color:'#94a3b8'}, title:{display:true,text:'Frequency (%)',color:'#94a3b8'} }, x:{ grid:{display:false}, ticks:{color:'#94a3b8',font:{size:9}} } }
+        }
+    });
+
+    // Chart: Evidence
+    const ev = {A:0,B:0,C:0}; a.forEach(x=>ev[x.evidence_level]++);
+    charts.ev?.destroy();
+    charts.ev = new Chart(document.getElementById('ch-ev'), {
+        type:'bar', data:{
+            labels:['Level A (Strong)','Level B (Moderate)','Level C (Preliminary)'],
+            datasets:[{data:[ev.A,ev.B,ev.C], backgroundColor:['#3b82f6','#8b5cf6','#64748b'], borderRadius:6}]
+        },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{grid:{color:'rgba(71,85,105,0.3)'},ticks:{color:'#94a3b8',stepSize:1}}, x:{grid:{display:false},ticks:{color:'#94a3b8'}} } }
+    });
+}
+
+// ===== ALLELES =====
+function initAlleles() {
+    const gSel = document.getElementById('a-gene');
+    [...new Set(allAlleles.map(a=>a.gene))].sort().forEach(g => { const o=document.createElement('option'); o.value=g; o.textContent=g; gSel.appendChild(o); });
+    ['a-search','a-gene','a-assoc','a-class'].forEach(id => document.getElementById(id).addEventListener(id==='a-search'?'input':'change', renderAlleleTable));
+    document.querySelectorAll('#a-table th[data-s]').forEach(th => th.addEventListener('click', ()=>{ const k=th.dataset.s; if(sortState.key===k)sortState.dir*=-1; else{sortState.key=k;sortState.dir=1;} renderAlleleTable(); }));
+    renderAlleleTable();
+}
+
+function renderAlleleTable() {
+    let list = [...allAlleles];
+    const q = document.getElementById('a-search').value.toLowerCase();
+    const gene = document.getElementById('a-gene').value;
+    const assoc = document.getElementById('a-assoc').value;
+    const cls = document.getElementById('a-class').value;
+    if(q) list=list.filter(a=> a.allele.toLowerCase().includes(q)||a.gene.toLowerCase().includes(q)||a.description.toLowerCase().includes(q));
+    if(gene) list=list.filter(a=>a.gene===gene);
+    if(assoc) list=list.filter(a=>a.association===assoc);
+    if(cls) list=list.filter(a=>a.class===cls);
+    list.sort((a,b)=>{ let va=a[sortState.key],vb=b[sortState.key]; if(typeof va==='string')return sortState.dir*va.localeCompare(vb); return sortState.dir*((va||0)-(vb||0)); });
+
+    document.getElementById('a-body').innerHTML = list.map(a => {
+        const isR = a.association==='risk';
+        const orPct = Math.min(Math.abs(Math.log(a.odds_ratio))/Math.log(2)*50, 50);
+        const orLeft = a.odds_ratio>1 ? '50%' : (50-orPct)+'%';
+        return `<tr onclick="showAlleleModal('${a.allele}')">
+            <td><strong>${a.allele}</strong></td>
+            <td>${a.gene}</td>
+            <td><span class="b ${a.class==='I'?'b-i':'b-ii'}">Class ${a.class}</span></td>
+            <td><span class="b ${isR?'b-risk':'b-protect'}">${a.association}</span></td>
+            <td><div class="or-bar"><span class="or-val" style="color:${isR?'var(--risk)':'var(--protect)'};">${a.odds_ratio}</span><div class="or-track"><div class="or-mid"></div><div class="or-fill" style="left:${orLeft};width:${orPct}%;background:${isR?'var(--risk)':'var(--protect)'};"></div></div></div></td>
+            <td>${a.p_value.toExponential(1)}</td>
+            <td><span class="b ${a.evidence_level==='A'?'b-a':a.evidence_level==='B'?'b-b':'b-c'}">${a.evidence_level}</span></td>
+            <td>${a.phenotype}</td>
+            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">${a.description}</td>
+        </tr>`;
+    }).join('');
+}
+
+window.showAlleleModal = function(allele) {
+    const a = allAlleles.find(x=>x.allele===allele); if(!a) return;
+    const isR = a.association==='risk';
+    const col = isR ? 'var(--risk)' : 'var(--protect)';
+    const geneInfo = DB.hla_genes[a.gene]||{};
+    document.getElementById('m-title').innerHTML = `<span style="color:${col};">${a.allele}</span>`;
+    document.getElementById('m-sub').textContent = `${a.gene} — Class ${a.class}`;
+    document.getElementById('m-body').innerHTML = `
+        <div style="text-align:center;margin:0.5rem 0;"><span class="b ${isR?'b-risk':'b-protect'}" style="font-size:1rem;padding:0.3rem 1rem;">OR: ${a.odds_ratio} (${a.ci_lower}–${a.ci_upper})</span></div>
+        <div class="d-row"><span class="d-l">Association</span><span class="d-v" style="color:${col};">${a.association.toUpperCase()}</span></div>
+        <div class="d-row"><span class="d-l">Phenotype</span><span class="d-v">${a.phenotype}</span></div>
+        <div class="d-row"><span class="d-l">P-value</span><span class="d-v">${a.p_value.toExponential(1)}</span></div>
+        <div class="d-row"><span class="d-l">Evidence</span><span class="d-v">Level ${a.evidence_level}</span></div>
+        <div class="d-row"><span class="d-l">Haplotype</span><span class="d-v" style="font-size:0.8rem;">${a.haplotype}</span></div>
+        <h4>Population Frequencies</h4>
+        <div class="freq-row"><span class="freq-l">EUR</span><div class="freq-bg"><div class="freq-fill" style="width:${(a.frequency_european||0)*200}%;background:var(--blue);"></div></div><span class="freq-v">${((a.frequency_european||0)*100).toFixed(1)}%</span></div>
+        <div class="freq-row"><span class="freq-l">ASN</span><div class="freq-bg"><div class="freq-fill" style="width:${(a.frequency_asian||0)*200}%;background:var(--risk);"></div></div><span class="freq-v">${((a.frequency_asian||0)*100).toFixed(1)}%</span></div>
+        <div class="freq-row"><span class="freq-l">AFR</span><div class="freq-bg"><div class="freq-fill" style="width:${(a.frequency_african||0)*200}%;background:var(--protect);"></div></div><span class="freq-v">${((a.frequency_african||0)*100).toFixed(1)}%</span></div>
+        <div class="freq-row"><span class="freq-l">LatAm</span><div class="freq-bg"><div class="freq-fill" style="width:${(a.frequency_latin_american||0)*200}%;background:var(--warn);"></div></div><span class="freq-v">${((a.frequency_latin_american||0)*100).toFixed(1)}%</span></div>
+        <h4>Description</h4><p>${a.description}</p>
+        <h4>Mechanism</h4><div class="mech-box">${a.mechanism}</div>
+        <h4>References</h4><p>${(a.key_references||[]).map(r=>`<a href="https://pubmed.ncbi.nlm.nih.gov/${r.replace('PMID:','')}" target="_blank" style="color:var(--cyan);">${r}</a>`).join(', ')}</p>
+    `;
+    document.getElementById('modal').classList.add('open');
+};
+document.getElementById('m-close').addEventListener('click', ()=>document.getElementById('modal').classList.remove('open'));
+document.getElementById('modal').addEventListener('click', e=>{ if(e.target===e.currentTarget)e.currentTarget.classList.remove('open'); });
+
+// ===== HAPLOTYPES =====
+function renderHaplotypes() {
+    document.getElementById('hap-list').innerHTML = DB.haplotype_risks.sort((a,b)=>b.odds_ratio-a.odds_ratio).map(h => {
+        const isR = h.odds_ratio > 1;
+        const pct = Math.min(Math.abs(Math.log(h.odds_ratio)) / Math.log(4) * 100, 100);
+        return `<div class="card" style="border-left:4px solid ${h.color};">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                <div>
+                    <div style="font-size:1.05rem;font-weight:700;color:${h.color};">${h.haplotype}</div>
+                    <div style="font-size:0.8rem;color:var(--dim);">${h.phenotype} — ${h.risk_category.replace(/_/g,' ').toUpperCase()}</div>
+                </div>
+                <div style="text-align:right;">
+                    <span class="b ${isR?'b-risk':'b-protect'}" style="font-size:0.9rem;padding:0.25rem 0.8rem;">OR: ${h.odds_ratio}</span>
+                    <div style="font-size:0.75rem;color:var(--dim);margin-top:0.2rem;">Freq: ${(h.frequency*100).toFixed(1)}%</div>
+                </div>
+            </div>
+            <div style="margin:0.6rem 0;height:8px;background:var(--bg);border-radius:4px;">
+                <div style="height:100%;width:${pct}%;background:${h.color};border-radius:4px;"></div>
+            </div>
+            <p style="color:var(--muted);font-size:0.85rem;">${h.description}</p>
+        </div>`;
+    }).join('');
+}
+
+// ===== SNPS =====
+function renderSNPs() {
+    const snps = DB.snp_associations;
+    document.getElementById('snp-body').innerHTML = snps.map(s => {
+        const isR = s.association==='risk';
+        return `<tr>
+            <td><strong style="color:var(--purple);">${s.rsid}</strong></td>
+            <td>${s.gene}</td>
+            <td style="font-size:0.78rem;">chr6:${s.position.toLocaleString()}</td>
+            <td>${s.ref}→${s.alt}</td>
+            <td><span class="b ${isR?'b-risk':'b-protect'}">${s.association}</span></td>
+            <td style="color:${isR?'var(--risk)':'var(--protect)'}; font-weight:700;">${s.odds_ratio}</td>
+            <td>${s.p_value.toExponential(1)}</td>
+            <td>${(s.frequency_global*100).toFixed(1)}%</td>
+            <td><span class="b ${s.evidence_level==='A'?'b-a':'b-b'}">${s.evidence_level}</span></td>
+            <td style="max-width:300px;color:var(--muted);font-size:0.8rem;">${s.description}</td>
+        </tr>`;
+    }).join('');
+
+    // SNP map chart
+    const mhcS = 28510120, mhcE = 33480577;
+    charts.snpmap?.destroy();
+    charts.snpmap = new Chart(document.getElementById('ch-snpmap'), {
+        type:'bubble', data:{
+            datasets: snps.map(s => ({
+                label: s.rsid,
+                data:[{ x: s.position, y: -Math.log10(s.p_value), r: Math.abs(Math.log(s.odds_ratio))*15 }],
+                backgroundColor: s.association==='risk' ? 'rgba(239,68,68,0.6)' : 'rgba(16,185,129,0.6)',
+            }))
+        },
+        options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{color:'#94a3b8',font:{size:10}} } },
+            scales:{
+                x:{ min:mhcS, max:mhcE, grid:{color:'rgba(71,85,105,0.2)'}, ticks:{color:'#94a3b8',callback:v=>(v/1e6).toFixed(1)+'Mb'}, title:{display:true,text:'Chr6 Position',color:'#94a3b8'} },
+                y:{ grid:{color:'rgba(71,85,105,0.2)'}, ticks:{color:'#94a3b8'}, title:{display:true,text:'-log10(p)',color:'#94a3b8'} }
+            }
+        }
+    });
+}
+
+// ===== MECHANISMS =====
+function renderMechanisms() {
+    const icons = { antigen:'🔬', molecular:'🧬', network:'🔗', inflammation:'🔥', nk_cell:'🛡', gut:'🦠' };
+    document.getElementById('mech-list').innerHTML = DB.biological_mechanisms.map(m => `
+        <div class="card">
+            <div class="card-t"><span style="font-size:1.3rem;">${icons[m.icon]||'⚙'}</span> ${m.name}</div>
+            <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.6rem;">${m.description}</p>
+            <div class="mech-box">${m.relevance_to_t2d}</div>
+        </div>
+    `).join('');
+}
+
+// ===== ANALYSIS =====
+function initAnalysis() {
+    document.getElementById('btn-demo').addEventListener('click', runDemo);
+    document.getElementById('btn-run').addEventListener('click', runManual);
+    const drop = document.getElementById('drop');
+    const fileIn = document.getElementById('file-in');
+    drop.addEventListener('click', ()=>fileIn.click());
+    drop.addEventListener('dragover', e=>{e.preventDefault();drop.style.borderColor='var(--blue)';});
+    drop.addEventListener('dragleave', ()=>{drop.style.borderColor='';});
+    drop.addEventListener('drop', e=>{e.preventDefault();drop.style.borderColor='';if(e.dataTransfer.files.length)uploadFile(e.dataTransfer.files[0]);});
+    fileIn.addEventListener('change', ()=>{if(fileIn.files.length)uploadFile(fileIn.files[0]);});
+}
+
+async function runDemo() {
+    setLoading(true);
+    try {
+        const r = await (await fetch('/api/analyze/demo',{method:'POST'})).json();
+        showResults(r);
+    } catch(e) { alert('Error: '+e.message); }
+    finally { setLoading(false); }
+}
+
+async function runManual() {
+    const text = document.getElementById('allele-text').value.trim();
+    if(!text){alert('Enter HLA alleles');return;}
+    setLoading(true);
+    try {
+        const r = await (await fetch('/api/analyze/alleles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alleles:text})})).json();
+        if(r.error) throw new Error(r.error);
+        showResults(r);
+    } catch(e) { alert('Error: '+e.message); }
+    finally { setLoading(false); }
+}
+
+async function uploadFile(file) {
+    setLoading(true);
+    const fd = new FormData(); fd.append('file', file);
+    try {
+        const r = await (await fetch('/api/analyze/upload',{method:'POST',body:fd})).json();
+        if(r.error) throw new Error(r.error);
+        showResults(r);
+    } catch(e) { alert('Error: '+e.message); }
+    finally { setLoading(false); }
+}
+
+function setLoading(on) { document.getElementById('loading').classList.toggle('on',on); if(on)document.getElementById('results').classList.remove('on'); }
+
+function showResults(rpt) {
+    const el = document.getElementById('results');
+    const rl = {very_high:'VERY HIGH RISK',high:'HIGH RISK',moderate:'MODERATE',low:'LOW RISK',protective:'PROTECTIVE'};
+    const rc = {very_high:'var(--risk)',high:'#f97316',moderate:'var(--warn)',low:'var(--cyan)',protective:'var(--protect)'};
+    const rp = {very_high:88,high:70,moderate:50,low:28,protective:10};
+
+    el.innerHTML = `
+        <div class="card">
+            <div class="card-t">Risk Assessment</div>
+            <div style="text-align:center;margin-bottom:0.5rem;">
+                <div style="font-size:1.8rem;font-weight:800;color:${rc[rpt.overall_risk]};">${rl[rpt.overall_risk]||rpt.overall_risk}</div>
+                <div style="color:var(--dim);font-size:0.8rem;">Combined OR: <strong>${rpt.combined_odds_ratio}</strong> | ${rpt.alleles_analyzed} alleles, ${rpt.alleles_found_in_db} in DB</div>
+            </div>
+            <div class="risk-meter"><div class="risk-pin" style="left:${rp[rpt.overall_risk]||50}%;"></div></div>
+            <div class="risk-labels"><span>Protective</span><span>Low</span><span>Moderate</span><span>High</span><span>Very High</span></div>
+        </div>
+        <div class="res-grid">
+            <div class="card">
+                <div class="card-t" style="color:var(--risk);">Risk Alleles (${rpt.risk_alleles.length})</div>
+                ${rpt.risk_alleles.map(a=>`<div class="allele-item"><strong style="color:var(--risk);">${a.allele}</strong><span style="margin-left:auto;font-size:0.8rem;">OR:${a.odds_ratio} x${a.copies}</span></div>`).join('')||'<p style="color:var(--dim);font-size:0.85rem;">None detected</p>'}
+            </div>
+            <div class="card">
+                <div class="card-t" style="color:var(--protect);">Protective Alleles (${rpt.protective_alleles.length})</div>
+                ${rpt.protective_alleles.map(a=>`<div class="allele-item"><strong style="color:var(--protect);">${a.allele}</strong><span style="margin-left:auto;font-size:0.8rem;">OR:${a.odds_ratio} x${a.copies}</span></div>`).join('')||'<p style="color:var(--dim);font-size:0.85rem;">None detected</p>'}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-t">Detected Haplotypes</div>
+            ${rpt.haplotype_results.map(h=>`
+                <div class="hap-item ${h.detected?'hap-detected':'hap-not'}">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${h.detected?(h.odds_ratio>1?'var(--risk)':'var(--protect)'):'var(--dim)'};"></span>
+                        <span>${h.haplotype}</span>
+                        <span class="b ${h.odds_ratio>1?'b-risk':'b-protect'}" style="margin-left:auto;">OR: ${h.odds_ratio}</span>
+                    </div>
+                    ${h.detected?`<div style="font-size:0.8rem;color:var(--muted);margin-top:0.2rem;padding-left:1.2rem;">${h.description}</div>`:''}
+                </div>
+            `).join('')}
+        </div>
+        <div class="res-grid">
+            <div class="card">
+                <div class="card-t">Recommendations</div>
+                ${rpt.recommendations.map(r=>`<div class="rec-item">${r}</div>`).join('')}
+            </div>
+            <div class="card">
+                <div class="card-t">Mechanisms Involved</div>
+                ${rpt.mechanisms_involved.map(m=>`<div style="margin-bottom:0.6rem;"><strong style="color:var(--cyan);font-size:0.85rem;">${m.name}</strong><div style="font-size:0.8rem;color:var(--muted);">${m.relevance_to_t2d}</div></div>`).join('')||'<p style="color:var(--dim);">None identified</p>'}
+            </div>
+        </div>
+    `;
+    el.classList.add('on');
+}
+</script>
+</body>
+</html>

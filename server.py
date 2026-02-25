@@ -43,6 +43,11 @@ def index():
     return send_file("index.html")
 
 
+@app.route("/dashboard")
+def dashboard_2d():
+    return send_file("dashboard.html")
+
+
 @app.route("/static/<path:filename>")
 def static_files(filename):
     return send_from_directory("static", filename)
